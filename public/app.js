@@ -381,12 +381,12 @@ $('#iconFromUrl').onclick = async () => {
 // ---------- free icon search (Iconify) ----------
 const ICON_COLORS = ['#1f2937', '#2563eb', '#16a34a', '#dc2626', '#ea580c', '#9333ea', '#0891b2', '#db2777'];
 let iconColor = ICON_COLORS[0];
-let iconHits = [], iconBase = 'https://api.iconify.design', iconSeq = 0, iconTimer;
+let iconHits = [], iconSeq = 0, iconTimer;
 try { iconColor = localStorage.getItem('sd.iconColor') || iconColor; } catch { /* ignore */ }
 $('#iconColors').innerHTML = ICON_COLORS.map((c) => `<button type="button" class="sw" data-c="${c}" style="background:${c}" aria-label="Color ${c}"></button>`).join('');
 const markColor = () => $('#iconColors').querySelectorAll('.sw').forEach((b) => b.classList.toggle('sel', b.dataset.c === iconColor));
 markColor();
-const iconUrl = (h) => `${iconBase}/${h.prefix}/${h.name}.svg${h.color ? '' : `?color=${encodeURIComponent(iconColor)}`}`;
+const iconUrl = (h) => `/api/icon/${h.prefix}/${h.name}.svg${h.color ? '' : `?color=${iconColor.slice(1)}`}`;
 function renderIconHits() {
   $('#iconResults').innerHTML = iconHits.map((h, i) => `<button type="button" data-i="${i}" title="${esc(h.id)}"><img src="${esc(iconUrl(h))}" alt="" loading="lazy"></button>`).join('');
 }
@@ -398,7 +398,7 @@ async function searchIcons() {
   try {
     const r = await api('GET', `/api/icon-search?q=${encodeURIComponent(q)}`);
     if (seq !== iconSeq) return;
-    iconHits = r.icons; iconBase = r.base || iconBase;
+    iconHits = r.icons;
     renderIconHits();
     if (!iconHits.length) $('#iconResults').innerHTML = '<span class="hint">No icons found, try another word</span>';
   } catch (err) { if (seq === iconSeq) $('#iconResults').innerHTML = `<span class="hint">${esc(err.message)}</span>`; }
@@ -423,7 +423,9 @@ $('#iconColors').addEventListener('click', (e) => {
 });
 $('#iconResults').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-i]'); if (!b) return;
-  addAndSelect(iconUrl(iconHits[b.dataset.i]));
+  const h = iconHits[b.dataset.i];
+  api('POST', '/api/icon-save', { prefix: h.prefix, name: h.name, color: h.color ? '' : iconColor })
+    .then((r) => addAndSelect(r.url)).catch((err) => toast(err.message));
 });
 
 $('#iconLetter').onclick = () => {

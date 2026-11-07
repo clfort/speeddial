@@ -357,24 +357,91 @@ app.post('/api/fetch-image', wrap(async (req, res) => {
 }));
 
 // Free icon search through Iconify (200k+ open-source icons, no API key).
+// The server fetches the icon data and serves the SVGs itself, so the browser only talks to SpeedDial
+// (works with ad blockers / DNS filters and keeps it to a few upstream requests per search).
 const iconSearchCache = new Map();
+const iconBodies = new Map(); // "prefix:name" -> { body, width, height }
+const ICON_ID = /^[a-z0-9-]+$/;
+const COLOR_SETS = /^(logos|skill-icons|devicon|vscode-icons|flat-color-icons|fluent-emoji-flat|fluent-emoji|fluent-color|noto|noto-v1|twemoji|emojione|openmoji|streamline-color|streamline-plump-color|material-icon-theme|catppuccin|cryptocurrency-color|circle-flags|flag|token-branded)$/;
+
+async function iconifyFetch(url) {
+  const r = await fetch(url, { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(10000) })
+    .catch(() => { throw fail(502, 'Icon search is unavailable right now'); });
+  if (!r.ok) throw fail(502, 'Icon search is unavailable right now');
+  return r.json();
+}
+
+// Loads icon bodies for one icon set (one request for many icons).
+async function loadIconBodies(prefix, names) {
+  const missing = names.filter((n) => !iconBodies.has(`${prefix}:${n}`));
+  for (let i = 0; i < missing.length; i += 60) {
+    const chunk = missing.slice(i, i + 60);
+    const j = await iconifyFetch(`${ICONIFY_API}/${prefix}.json?icons=${chunk.join(',')}`).catch(() => null);
+    if (!j || typeof j !== 'object') continue;
+    const icons = j.icons || {};
+    const aliases = j.aliases || {};
+    for (const n of chunk) {
+      let src = icons[n], extra = {}, cur = n;
+      for (let k = 0; !src && aliases[cur] && k < 5; k++) { extra = { ...aliases[cur], ...extra }; cur = aliases[cur].parent; src = icons[cur]; }
+      if (!src || typeof src.body !== 'string') continue;
+      iconBodies.set(`${prefix}:${n}`, {
+        body: src.body,
+        left: extra.left ?? src.left ?? j.left ?? 0,
+        top: extra.top ?? src.top ?? j.top ?? 0,
+        width: extra.width ?? src.width ?? j.width ?? 16,
+        height: extra.height ?? src.height ?? j.height ?? 16,
+      });
+    }
+  }
+  if (iconBodies.size > 20000) iconBodies.clear();
+}
+
+function iconSvg(prefix, name, color) {
+  const d = iconBodies.get(`${prefix}:${name}`);
+  if (!d) return null;
+  let body = d.body;
+  if (color) body = body.replace(/currentColor/g, color);
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="${d.left} ${d.top} ${d.width} ${d.height}" width="256" height="${Math.round(256 * d.height / d.width)}">${body}</svg>`;
+}
+
+const cleanColor = (c) => (/^#?[0-9a-f]{3,8}$/i.test(String(c || '')) ? `#${String(c).replace('#', '')}` : '');
+
 app.get('/api/icon-search', wrap(async (req, res) => {
   const q = String(req.query.q || '').trim().slice(0, 60);
   if (q.length < 2) return res.json({ icons: [] });
   const key = q.toLowerCase();
   if (!iconSearchCache.has(key)) {
-    const r = await fetch(`${ICONIFY_API}/search?${new URLSearchParams({ query: q, limit: '120' })}`, { signal: AbortSignal.timeout(8000) })
-      .catch(() => { throw fail(502, 'Icon search is unavailable right now'); });
-    if (!r.ok) throw fail(502, 'Icon search is unavailable right now');
-    const j = await r.json();
-    const names = (j.icons || []).filter((n) => /^[a-z0-9-]+:[a-z0-9-]+$/.test(n));
+    const j = await iconifyFetch(`${ICONIFY_API}/search?${new URLSearchParams({ query: q, limit: '96' })}`);
+    const ids = (j.icons || []).map((n) => String(n).split(':')).filter(([p, n]) => ICON_ID.test(p || '') && ICON_ID.test(n || ''));
+    const byPrefix = new Map();
+    for (const [p, n] of ids) byPrefix.set(p, [...(byPrefix.get(p) || []), n]);
+    await Promise.all([...byPrefix].map(([p, names]) => loadIconBodies(p, names)));
+    const list = ids.filter(([p, n]) => iconBodies.has(`${p}:${n}`))
+      .map(([prefix, name]) => ({ id: `${prefix}:${name}`, prefix, name, color: COLOR_SETS.test(prefix) }));
     // Full-color sets first: they look best on a white tile.
-    const COLOR = /^(logos|skill-icons|devicon|vscode-icons|flat-color-icons|fluent-emoji-flat|fluent-color|noto|twemoji|emojione|openmoji|streamline-color|streamline-plump-color|material-icon-theme|catppuccin)$/;
-    names.sort((a, b) => COLOR.test(b.split(':')[0]) - COLOR.test(a.split(':')[0]));
-    iconSearchCache.set(key, names.map((n) => { const [prefix, name] = n.split(':'); return { id: n, prefix, name, color: COLOR.test(prefix) }; }));
+    list.sort((a, b) => b.color - a.color);
+    iconSearchCache.set(key, list);
     if (iconSearchCache.size > 300) iconSearchCache.delete(iconSearchCache.keys().next().value);
   }
-  res.json({ icons: iconSearchCache.get(key), base: ICONIFY_API });
+  res.json({ icons: iconSearchCache.get(key) });
+}));
+
+app.get('/api/icon/:prefix/:name.svg', wrap(async (req, res) => {
+  const { prefix, name } = req.params;
+  if (!ICON_ID.test(prefix) || !ICON_ID.test(name)) throw fail(400, 'Bad icon');
+  if (!iconBodies.has(`${prefix}:${name}`)) await loadIconBodies(prefix, [name]);
+  const svg = iconSvg(prefix, name, cleanColor(req.query.color));
+  if (!svg) throw fail(404, 'Icon not found');
+  res.set({ 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=604800', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox" }).send(svg);
+}));
+
+app.post('/api/icon-save', wrap(async (req, res) => {
+  const prefix = String(req.body?.prefix || ''), name = String(req.body?.name || '');
+  if (!ICON_ID.test(prefix) || !ICON_ID.test(name)) throw fail(400, 'Bad icon');
+  if (!iconBodies.has(`${prefix}:${name}`)) await loadIconBodies(prefix, [name]);
+  const svg = iconSvg(prefix, name, cleanColor(req.body?.color));
+  if (!svg) throw fail(404, 'Icon not found');
+  res.json({ url: await storeImage(Buffer.from(svg), 'image/svg+xml') });
 }));
 
 app.get('/api/weather', wrap(async (req, res) => res.json(await getWeather())));
