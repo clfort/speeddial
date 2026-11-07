@@ -27,7 +27,17 @@ routers, NAS) is fine.
 
 Everything is stored in `./data` (`speeddial.json` plus `uploads/`).
 
-## Run it with Docker (Ubuntu, plain HTTP)
+## Install from the prebuilt image (like your other apps)
+
+Every push to `main` publishes `ghcr.io/clfort/speeddial:latest` (amd64 and
+arm64). On any Docker host, save [`deploy/docker-compose.yml`](deploy/docker-compose.yml)
+as `/opt/speeddial/docker-compose.yml` and run `docker compose up -d`.
+Update with `docker compose pull && docker compose up -d`.
+
+If the image is private, log in once on that host with a GitHub token that has
+the `read:packages` scope: `echo <token> | docker login ghcr.io -u clfort --password-stdin`.
+
+## Build from source with Docker (Ubuntu, plain HTTP)
 
 ```bash
 sudo git clone https://github.com/clfort/speeddial.git /opt/speeddial

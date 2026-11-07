@@ -1,0 +1,17 @@
+# Drop-in compose file: no source code needed, the image is pulled from
+# GitHub Container Registry. Put this in e.g. /opt/speeddial and run:
+#   docker compose up -d
+# Update later with:
+#   docker compose pull && docker compose up -d
+services:
+  speeddial:
+    image: ghcr.io/clfort/speeddial:latest
+    container_name: speeddial
+    restart: unless-stopped
+    ports:
+      - "8090:8090"            # change the left number for another port
+    environment:
+      - TZ=America/Winnipeg
+      - BASIC_AUTH=            # optional "user:password", use it on a public VPS
+    volumes:
+      - ./data:/data           # shortcuts, settings, icons, backgrounds
