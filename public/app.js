@@ -74,7 +74,27 @@ function applySettings() {
   $('#bg').style.backgroundImage = bg ? `url("${bg.replace(/"/g, '%22')}")` : '';
   $('#search').hidden = !s.showSearch;
   renderClock();
+  renderGreeting();
 }
+
+function greetingText() {
+  const h = new Date().getHours();
+  const part = h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 22 ? 'Good evening' : 'Good night';
+  const name = (state.settings.userName || '').trim();
+  return name ? `${part}, ${name}` : part;
+}
+function renderGreeting() {
+  const custom = (page()?.title || '').trim();
+  const show = !!custom || state.settings.showGreeting !== false;
+  const el = $('#greeting');
+  el.hidden = !show;
+  if (!show) return;
+  const text = custom || greetingText();
+  if ($('h1', el).textContent !== text) $('h1', el).textContent = text;
+  const date = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+  if ($('.date', el).textContent !== date) $('.date', el).textContent = date;
+}
+setInterval(() => state.pages.length && renderGreeting(), 30000);
 
 function renderPages() {
   const nav = $('#pages');
@@ -299,7 +319,7 @@ async function lookup() {
     if (editing && chosenIcon && !opts.includes(chosenIcon)) opts.unshift(chosenIcon);
     const sel = editing && chosenIcon ? chosenIcon : (opts[0] || letterIcon(form.name.value || url));
     setIconOptions(opts, sel);
-    $('#iconHint').textContent = r.icons.length ? 'click one to choose (or paste an image)' : 'no icon found, upload one or use a letter';
+    $('#iconHint').textContent = r.icons.length ? 'click one to choose (or paste an image)' : 'no site icon found, try Search free icons';
   } catch {
     if (seq === lookupSeq) $('#iconHint').textContent = '';
   }
@@ -325,6 +345,7 @@ function openTileDialog(tile = null) {
   sel.value = pageId;
   $('#moveRow').hidden = state.pages.length < 2;
   $('#iconHint').textContent = tile ? '' : 'paste a web address to find icons';
+  $('#iconSearch').hidden = true; $('#iconQuery').value = ''; $('#iconResults').innerHTML = ''; iconHits = [];
   setIconOptions(tile ? [tile.icon] : [], tile ? tile.icon || letterIcon(tile.name) : '');
   dlg.showModal();
   (tile ? form.name : form.url).focus();
@@ -357,6 +378,54 @@ $('#iconFromUrl').onclick = async () => {
   if (!u) return;
   try { const r = await api('POST', '/api/fetch-image', { url: u.trim() }); addAndSelect(r.url); } catch (err) { toast(err.message); }
 };
+// ---------- free icon search (Iconify) ----------
+const ICON_COLORS = ['#1f2937', '#2563eb', '#16a34a', '#dc2626', '#ea580c', '#9333ea', '#0891b2', '#db2777'];
+let iconColor = ICON_COLORS[0];
+let iconHits = [], iconBase = 'https://api.iconify.design', iconSeq = 0, iconTimer;
+try { iconColor = localStorage.getItem('sd.iconColor') || iconColor; } catch { /* ignore */ }
+$('#iconColors').innerHTML = ICON_COLORS.map((c) => `<button type="button" class="sw" data-c="${c}" style="background:${c}" aria-label="Color ${c}"></button>`).join('');
+const markColor = () => $('#iconColors').querySelectorAll('.sw').forEach((b) => b.classList.toggle('sel', b.dataset.c === iconColor));
+markColor();
+const iconUrl = (h) => `${iconBase}/${h.prefix}/${h.name}.svg${h.color ? '' : `?color=${encodeURIComponent(iconColor)}`}`;
+function renderIconHits() {
+  $('#iconResults').innerHTML = iconHits.map((h, i) => `<button type="button" data-i="${i}" title="${esc(h.id)}"><img src="${esc(iconUrl(h))}" alt="" loading="lazy"></button>`).join('');
+}
+async function searchIcons() {
+  const q = $('#iconQuery').value.trim();
+  const seq = ++iconSeq;
+  if (q.length < 2) { iconHits = []; renderIconHits(); return; }
+  $('#iconResults').innerHTML = '<span class="spinner"></span>';
+  try {
+    const r = await api('GET', `/api/icon-search?q=${encodeURIComponent(q)}`);
+    if (seq !== iconSeq) return;
+    iconHits = r.icons; iconBase = r.base || iconBase;
+    renderIconHits();
+    if (!iconHits.length) $('#iconResults').innerHTML = '<span class="hint">No icons found, try another word</span>';
+  } catch (err) { if (seq === iconSeq) $('#iconResults').innerHTML = `<span class="hint">${esc(err.message)}</span>`; }
+}
+function openIconSearch(q) {
+  $('#iconSearch').hidden = false;
+  const input = $('#iconQuery');
+  if (q !== undefined && !input.value) input.value = q;
+  input.focus();
+  searchIcons();
+}
+$('#iconSearchToggle').onclick = () => {
+  if (!$('#iconSearch').hidden) { $('#iconSearch').hidden = true; return; }
+  openIconSearch(form.name.value.trim());
+};
+$('#iconQuery').addEventListener('input', () => { clearTimeout(iconTimer); iconTimer = setTimeout(searchIcons, 350); });
+$('#iconQuery').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(iconTimer); searchIcons(); } });
+$('#iconColors').addEventListener('click', (e) => {
+  const b = e.target.closest('.sw'); if (!b) return;
+  iconColor = b.dataset.c; markColor(); renderIconHits();
+  try { localStorage.setItem('sd.iconColor', iconColor); } catch { /* ignore */ }
+});
+$('#iconResults').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-i]'); if (!b) return;
+  addAndSelect(iconUrl(iconHits[b.dataset.i]));
+});
+
 $('#iconLetter').onclick = () => {
   const l = $('#iconPicker .opt.letter');
   if (l) selectIcon(l.dataset.icon);
@@ -455,12 +524,23 @@ function openSettings() {
   $('#cityInput').value = s.city; $('#cityResults').innerHTML = '';
   $('#bgThisPage').checked = !!page().background;
   $('#bgPageName').textContent = page().name;
+  sform.userName.value = s.userName || '';
+  sform.showGreeting.checked = s.showGreeting !== false;
+  $('#pageTitle').value = page().title || '';
+  sform.querySelectorAll('.pgName').forEach((el) => (el.textContent = page().name));
   refreshBgPreview();
   sdlg.showModal();
 }
 sform.addEventListener('input', (e) => {
   const el = e.target; if (!el.name) return;
   if (el.name === 'dim' || el.name === 'tileSize') saveSettings({ [el.name]: Number(el.value) });
+  if (el.name === 'userName') { clearTimeout(nameTimer); state.settings.userName = el.value; renderGreeting(); nameTimer = setTimeout(() => saveSettings({ userName: el.value.trim() }), 500); }
+});
+let nameTimer, titleTimer;
+$('#pageTitle').addEventListener('input', (e) => {
+  const p = page(); p.title = e.target.value; renderGreeting();
+  clearTimeout(titleTimer);
+  titleTimer = setTimeout(() => api('PUT', `/api/pages/${p.id}`, { title: e.target.value }), 500);
 });
 sform.addEventListener('change', (e) => {
   const el = e.target; if (!el.name) return;

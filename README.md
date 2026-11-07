@@ -6,6 +6,11 @@ your own background, the local time and the weather. Nothing else.
 - **Add a shortcut in one step:** click **+** (or press `N`), paste the address.
   The name and icon fill in automatically; pick another icon, upload one,
   paste an image from the clipboard, use an image URL, or use a letter.
+- **Free icon search:** in the add/edit dialog click *Search free icons* and
+  type a word (e.g. "shipping"). Results come from [Iconify](https://iconify.design/)
+  (200k+ open-source icons, no account); one-color icons can be tinted.
+- **Greeting:** "Good evening, Carlos" above the search bar. Set your name in
+  settings, or give a page its own title (e.g. "Work") instead.
 - **Edit / delete / move:** hover a shortcut and click **⋯**, or right-click it
   (long-press on a phone). Drag icons to reorder them, or drop one on a page tab
   to move it there.
@@ -79,6 +84,6 @@ npm install
 npm run dev          # http://localhost:8090, data in ./data
 ```
 
-Node 20+. Settings via env: `PORT`, `DATA_DIR`, `BASIC_AUTH`.
+Node 20+. Settings via env: `PORT`, `DATA_DIR`, `BASIC_AUTH`, `ICONIFY_API` (default `https://api.iconify.design`).
 
 Keyboard: `1`–`9` switch pages, `N` adds a shortcut, `/` focuses search, `Esc` closes menus.

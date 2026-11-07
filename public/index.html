@@ -20,6 +20,7 @@
   </header>
 
   <main>
+    <div id="greeting" hidden><h1></h1><div class="date"></div></div>
     <form id="search" autocomplete="off"><input name="q" placeholder="Search the web" aria-label="Search"></form>
     <div id="grid"></div>
   </main>
@@ -46,8 +47,17 @@
         <div class="row small">
           <button type="button" class="link" id="iconUpload">Upload image</button>
           <button type="button" class="link" id="iconFromUrl">Use image URL</button>
+          <button type="button" class="link" id="iconSearchToggle">Search free icons</button>
           <button type="button" class="link" id="iconLetter">Use letter</button>
           <input type="file" id="iconFile" accept="image/*" hidden>
+        </div>
+        <div id="iconSearch" hidden>
+          <div class="row small">
+            <input id="iconQuery" placeholder="Type a word: shipping, router, money…" autocomplete="off">
+          </div>
+          <div class="row small" id="iconColors" title="Color for one-color icons"></div>
+          <div id="iconResults"></div>
+          <div class="hint">Free icons from <a href="https://iconify.design/" target="_blank" rel="noopener">Iconify</a>. Click one to use it.</div>
         </div>
       </div>
       <label id="moveRow">Page<select name="pageId"></select></label>
@@ -64,6 +74,13 @@
   <dialog id="setDlg">
     <form method="dialog" id="setForm">
       <h2>Settings</h2>
+
+      <h3>Title</h3>
+      <div class="row">
+        <label class="grow">Your name<input name="userName" placeholder="Carlos"></label>
+        <label class="check"><input type="checkbox" name="showGreeting"> Show greeting</label>
+      </div>
+      <label>Title for this page (<span class="pgName"></span>)<input id="pageTitle" placeholder="Leave empty for &quot;Good evening, …&quot;"></label>
 
       <h3>Background</h3>
       <div class="bgrow">

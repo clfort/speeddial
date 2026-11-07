@@ -14,6 +14,7 @@ const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data
 const UPLOADS = path.join(DATA_DIR, 'uploads');
 const DB_FILE = path.join(DATA_DIR, 'speeddial.json');
 const BASIC_AUTH = process.env.BASIC_AUTH || ''; // "user:password", optional
+const ICONIFY_API = (process.env.ICONIFY_API || 'https://api.iconify.design').replace(/\/$/, '');
 
 fs.mkdirSync(UPLOADS, { recursive: true });
 
@@ -36,6 +37,8 @@ function defaultState() {
       dim: 25,              // 0-80, darkens the background for readable text
       tileSize: 72,
       newTab: false,
+      userName: '',         // shown in the greeting: "Good evening, Carlos"
+      showGreeting: true,
     },
     pages: [
       { id: 'personal', name: 'Personal', background: '', tiles: [] },
@@ -222,7 +225,9 @@ if (BASIC_AUTH) {
 }
 
 app.use(express.json({ limit: '2mb' }));
-app.use('/uploads', express.static(UPLOADS, { maxAge: '30d', immutable: true }));
+// Uploaded SVGs are opened as images only; the sandbox stops any script inside one from running.
+app.use('/uploads', (req, res, next) => { res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox"); next(); },
+  express.static(UPLOADS, { maxAge: '30d', immutable: true }));
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: 0 }));
 
 const wrap = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => res.status(e.status || 500).json({ error: e.message }));
@@ -254,6 +259,7 @@ app.put('/api/pages/:id', wrap(async (req, res) => {
   if (!page) throw fail(404, 'Page not found');
   if (typeof req.body?.name === 'string' && req.body.name.trim()) page.name = req.body.name.trim().slice(0, 40);
   if (typeof req.body?.background === 'string') page.background = req.body.background;
+  if (typeof req.body?.title === 'string') page.title = req.body.title.trim().slice(0, 80);
   await save();
   res.json(page);
 }));
@@ -348,6 +354,27 @@ app.post('/api/upload', express.raw({ type: '*/*', limit: '15mb' }), wrap(async 
 app.post('/api/fetch-image', wrap(async (req, res) => {
   const { buf, type } = await fetchImage(String(req.body?.url || ''), { timeout: 10000 }).catch((e) => { throw fail(400, `Could not download image (${e.message})`); });
   res.json({ url: await storeImage(buf, type) });
+}));
+
+// Free icon search through Iconify (200k+ open-source icons, no API key).
+const iconSearchCache = new Map();
+app.get('/api/icon-search', wrap(async (req, res) => {
+  const q = String(req.query.q || '').trim().slice(0, 60);
+  if (q.length < 2) return res.json({ icons: [] });
+  const key = q.toLowerCase();
+  if (!iconSearchCache.has(key)) {
+    const r = await fetch(`${ICONIFY_API}/search?${new URLSearchParams({ query: q, limit: '120' })}`, { signal: AbortSignal.timeout(8000) })
+      .catch(() => { throw fail(502, 'Icon search is unavailable right now'); });
+    if (!r.ok) throw fail(502, 'Icon search is unavailable right now');
+    const j = await r.json();
+    const names = (j.icons || []).filter((n) => /^[a-z0-9-]+:[a-z0-9-]+$/.test(n));
+    // Full-color sets first: they look best on a white tile.
+    const COLOR = /^(logos|skill-icons|devicon|vscode-icons|flat-color-icons|fluent-emoji-flat|fluent-color|noto|twemoji|emojione|openmoji|streamline-color|streamline-plump-color|material-icon-theme|catppuccin)$/;
+    names.sort((a, b) => COLOR.test(b.split(':')[0]) - COLOR.test(a.split(':')[0]));
+    iconSearchCache.set(key, names.map((n) => { const [prefix, name] = n.split(':'); return { id: n, prefix, name, color: COLOR.test(prefix) }; }));
+    if (iconSearchCache.size > 300) iconSearchCache.delete(iconSearchCache.keys().next().value);
+  }
+  res.json({ icons: iconSearchCache.get(key), base: ICONIFY_API });
 }));
 
 app.get('/api/weather', wrap(async (req, res) => res.json(await getWeather())));
