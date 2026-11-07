@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SpeedDial</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div id="bg"></div>
+  <div id="dim"></div>
+
+  <header>
+    <nav id="pages" aria-label="Pages"></nav>
+    <div class="right">
+      <div id="clock" title="Local time"><div class="time"></div><div class="sub">Local time</div></div>
+      <button id="weather" class="plain" title="Weather"><div class="time"><span class="wicon"></span><span class="temp">--</span></div><div class="sub city"></div></button>
+    </div>
+  </header>
+
+  <main>
+    <form id="search" autocomplete="off"><input name="q" placeholder="Search the web" aria-label="Search"></form>
+    <div id="grid"></div>
+  </main>
+
+  <button id="settingsBtn" class="iconbtn corner" title="Settings" aria-label="Settings">
+    <svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+  </button>
+
+  <!-- Weather details -->
+  <div id="forecast" class="pop" hidden></div>
+
+  <!-- Context menu -->
+  <div id="menu" class="pop" hidden></div>
+
+  <!-- Add / edit shortcut -->
+  <dialog id="tileDlg">
+    <form method="dialog" id="tileForm">
+      <h2 id="tileTitle">Add shortcut</h2>
+      <label>Web address<input name="url" placeholder="https://example.com or 192.168.1.10:8006" required></label>
+      <label>Name<input name="name" placeholder="Fills in automatically"></label>
+      <div class="field">
+        <div class="lbl">Icon <span class="hint" id="iconHint"></span></div>
+        <div id="iconPicker"></div>
+        <div class="row small">
+          <button type="button" class="link" id="iconUpload">Upload image</button>
+          <button type="button" class="link" id="iconFromUrl">Use image URL</button>
+          <button type="button" class="link" id="iconLetter">Use letter</button>
+          <input type="file" id="iconFile" accept="image/*" hidden>
+        </div>
+      </div>
+      <label id="moveRow">Page<select name="pageId"></select></label>
+      <div class="actions">
+        <button type="button" class="danger" id="tileDelete">Delete</button>
+        <span class="grow"></span>
+        <button type="button" id="tileCancel">Cancel</button>
+        <button type="submit" class="primary" id="tileSave">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Settings -->
+  <dialog id="setDlg">
+    <form method="dialog" id="setForm">
+      <h2>Settings</h2>
+
+      <h3>Background</h3>
+      <div class="bgrow">
+        <div id="bgPreview"></div>
+        <div class="col">
+          <div class="row small">
+            <button type="button" id="bgUpload">Upload image</button>
+            <button type="button" id="bgUrl">Image URL</button>
+            <button type="button" id="bgClear">Default</button>
+            <input type="file" id="bgFile" accept="image/*" hidden>
+          </div>
+          <label class="check"><input type="checkbox" id="bgThisPage"> Only for this page (<span id="bgPageName"></span>)</label>
+          <label>Darken <input type="range" name="dim" min="0" max="80"></label>
+        </div>
+      </div>
+
+      <h3>Weather &amp; time</h3>
+      <label>City<input id="cityInput" placeholder="Search a city"></label>
+      <div id="cityResults"></div>
+      <div class="row">
+        <label class="check"><input type="radio" name="units" value="celsius"> °C</label>
+        <label class="check"><input type="radio" name="units" value="fahrenheit"> °F</label>
+        <label class="check"><input type="checkbox" name="clock24"> 24-hour clock</label>
+        <label class="check"><input type="checkbox" name="showSeconds"> Seconds</label>
+      </div>
+
+      <h3>Layout</h3>
+      <label>Icon size <input type="range" name="tileSize" min="48" max="120"></label>
+      <div class="row">
+        <label class="check"><input type="checkbox" name="newTab"> Open shortcuts in a new tab</label>
+        <label class="check"><input type="checkbox" name="showSearch"> Show search bar</label>
+      </div>
+      <label>Search engine
+        <select name="searchEngine">
+          <option value="https://www.google.com/search?q=">Google</option>
+          <option value="https://duckduckgo.com/?q=">DuckDuckGo</option>
+          <option value="https://www.bing.com/search?q=">Bing</option>
+          <option value="https://search.brave.com/search?q=">Brave</option>
+        </select>
+      </label>
+
+      <h3>Backup</h3>
+      <div class="row small">
+        <a class="btn" href="/api/export">Download backup</a>
+        <button type="button" id="importBtn">Restore backup</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
+
+      <div class="actions">
+        <span class="grow hint">Changes save automatically.</span>
+        <button type="submit" class="primary">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" hidden></div>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

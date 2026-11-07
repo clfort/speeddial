@@ -1,0 +1,17 @@
+{
+  "name": "speeddial",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A tiny self-hosted speed-dial start page",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "express": "^5.1.0",
+    "undici": "^7.10.0"
+  }
+}

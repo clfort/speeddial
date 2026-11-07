@@ -1,0 +1,16 @@
+services:
+  speeddial:
+    build: .
+    image: speeddial:latest
+    container_name: speeddial
+    restart: unless-stopped
+    ports:
+      # Change the left number to use another port on the host, e.g. "8095:8090".
+      - "${SPEEDDIAL_PORT:-8090}:8090"
+    environment:
+      - TZ=${TZ:-America/Winnipeg}
+      # Optional password prompt, recommended on a public VPS: BASIC_AUTH=user:password
+      - BASIC_AUTH=${BASIC_AUTH:-}
+    volumes:
+      # Shortcuts, settings, icons and backgrounds live here. Back up this folder.
+      - ./data:/data
