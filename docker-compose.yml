@@ -9,7 +9,7 @@ services:
       - "${SPEEDDIAL_PORT:-8090}:8090"
     environment:
       - TZ=${TZ:-America/Winnipeg}
-      # Optional password prompt, recommended on a public VPS: BASIC_AUTH=user:password
+      # Optional password prompt: BASIC_AUTH=user:password
       - BASIC_AUTH=${BASIC_AUTH:-}
     volumes:
       # Shortcuts, settings, icons and backgrounds live here. Back up this folder.

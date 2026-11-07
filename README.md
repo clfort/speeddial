@@ -27,76 +27,50 @@ routers, NAS) is fine.
 
 Everything is stored in `./data` (`speeddial.json` plus `uploads/`).
 
-## Install from the prebuilt image (like your other apps)
+## Install from the prebuilt image
 
-Every push to `main` publishes `ghcr.io/clfort/speeddial:latest` (amd64 and
-arm64). On any Docker host, save [`deploy/docker-compose.yml`](deploy/docker-compose.yml)
-as `/opt/speeddial/docker-compose.yml` and run `docker compose up -d`.
-Update with `docker compose pull && docker compose up -d`.
-
-If the image is private, log in once on that host with a GitHub token that has
-the `read:packages` scope: `echo <token> | docker login ghcr.io -u clfort --password-stdin`.
-
-## Build from source with Docker (Ubuntu, plain HTTP)
+Every push to `main` publishes the image to GitHub Container Registry
+(amd64 and arm64). On any Docker host, save
+[`deploy/docker-compose.yml`](deploy/docker-compose.yml) as
+`/opt/speeddial/docker-compose.yml`, replace `<github-user>` with the owner of
+this repository, and run:
 
 ```bash
-sudo git clone https://github.com/clfort/speeddial.git /opt/speeddial
-cd /opt/speeddial
-sudo docker compose up -d --build
+docker compose up -d
 ```
 
-Open `http://<server-ip>:8090`.
+Open `http://<server-ip>:8090`. Update with
+`docker compose pull && docker compose up -d`.
+
+## Build from source
+
+```bash
+git clone https://github.com/<github-user>/speeddial.git /opt/speeddial
+cd /opt/speeddial
+docker compose up -d --build
+```
 
 To use another port, create `.env` from `.env.example` and set
-`SPEEDDIAL_PORT=8095`, then `sudo docker compose up -d`.
+`SPEEDDIAL_PORT=8095`, then `docker compose up -d`.
 
-**Update:** `cd /opt/speeddial && sudo git pull && sudo docker compose up -d --build`
-**Logs:** `sudo docker compose logs -f`
-**Backup:** copy `/opt/speeddial/data`.
-
-## Oracle Cloud VPS
-
-Same commands as above, plus:
-
-1. Set a password, since the VPS is on the internet: in `/opt/speeddial/.env` put
-   `BASIC_AUTH=carlos:<a long password>`, then `sudo docker compose up -d`.
-2. Open the port in **two** places: the VCN Security List (or NSG) ingress rule
-   for TCP 8090, and the instance firewall. Oracle's Ubuntu images block ports
-   with iptables by default:
-   ```bash
-   sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 8090 -j ACCEPT
-   sudo netfilter-persistent save
-   ```
-3. Better: don't open 8090 publicly; put it behind your existing reverse proxy
-   (Nginx Proxy Manager) with HTTPS, or reach it over Tailscale/VPN only.
-
-Basic auth over plain HTTP sends the password unencrypted, so on a VPS use it
-with HTTPS from the reverse proxy.
+**Logs:** `docker compose logs -f`
+**Backup:** copy the `data` folder next to the compose file.
 
 ## Install with Claude Code
 
-Paste this into Claude Code on the machine that will host it:
+Paste this into Claude Code on the machine that will host it (replace
+`<github-user>`):
 
-> Install SpeedDial from https://github.com/clfort/speeddial into /opt/speeddial
-> (the folder may already exist and be empty; if so clone into it with
-> `git clone https://github.com/clfort/speeddial.git .`). Make sure Docker and the
-> Docker Compose plugin are installed. Check that port 8090 is free (`ss -ltnp`);
-> if it is taken, pick the next free port and set `SPEEDDIAL_PORT` in
-> /opt/speeddial/.env (copy .env.example). Run `docker compose up -d --build`,
-> wait until `docker ps` shows the container healthy, confirm
-> `curl http://localhost:<port>/api/health` returns `{"ok":true}`, and tell me the
-> URL to open from another computer on my network. Do not touch other
+> Install SpeedDial into /opt/speeddial using the image
+> `ghcr.io/<github-user>/speeddial:latest`: put the compose file from
+> https://github.com/<github-user>/speeddial/blob/main/deploy/docker-compose.yml
+> there (with the image name filled in). Make sure Docker and the Docker Compose
+> plugin are installed. Check that port 8090 is free (`ss -ltnp`); if it is
+> taken, pick the next free port and change the left side of the port mapping.
+> Run `docker compose up -d`, wait until the container is healthy, confirm
+> `curl http://localhost:<port>/api/health` returns `{"ok":true}`, and tell me
+> the URL to open from another computer on my network. Do not touch other
 > containers.
-
-For the Oracle VPS, add:
-
-> This is a public Oracle Cloud VPS. Generate a strong password and set
-> `BASIC_AUTH=carlos:<password>` in /opt/speeddial/.env before starting, and
-> show me the password. If Nginx Proxy Manager or another reverse proxy is
-> running here, tell me how to add a proxy host for SpeedDial instead of
-> opening the port; otherwise open TCP <port> in iptables (persisted with
-> netfilter-persistent) and remind me to add the ingress rule in the Oracle VCN
-> Security List.
 
 ## Develop without Docker
 

@@ -1,6 +1,6 @@
 # Builds the Docker image on every push to main and publishes it to
-# GitHub Container Registry as ghcr.io/clfort/speeddial:latest
-# (amd64 for regular PCs, arm64 for Oracle Ampere / Raspberry Pi).
+# GitHub Container Registry as ghcr.io/<owner>/speeddial:latest
+# (amd64 and arm64).
 name: Publish Docker image
 
 on:
