@@ -15,6 +15,12 @@ your own background, the local time and the weather. Nothing else.
 - **Edit / delete / move:** hover a shortcut and click **⋯**, or right-click it
   (long-press on a phone). Drag icons to reorder them, or drop one on a page tab
   to move it there.
+- **Folders (iPhone style):** drag a shortcut onto the middle of another one to
+  make a folder, or onto a folder to put it inside. Click a folder to open it,
+  click its name to rename it, drag a shortcut outside the box to take it out.
+  Right-click a shortcut for *Move to folder*, right-click a folder to rename,
+  recolor, move it to another page or remove it (its shortcuts stay). Right-click
+  the **+** tile for *New folder*.
 - **Pages:** *Personal* and *Office* to start. Click a tab (or press `1`, `2`…)
   to switch, **+** to add one, right-click a tab to rename, reorder or delete it.
   Each page has its own address (`/#personal`, `/#office`) so you can set either

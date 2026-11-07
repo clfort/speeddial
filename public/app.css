@@ -67,11 +67,11 @@ main {
 #search input::placeholder { color: rgba(255, 255, 255, .75); }
 #search input:focus { background: rgba(255, 255, 255, .25); border-color: rgba(255, 255, 255, .5); }
 
-#grid {
+#grid, #folderGrid {
   display: flex; flex-wrap: wrap; gap: 28px 34px; justify-content: center;
   width: min(1100px, 100%);
 }
-#grid > .tile { width: calc(var(--tile) + 46px); }
+#grid > .tile, #folderGrid > .tile { width: calc(var(--tile) + 46px); }
 .tile {
   position: relative; display: flex; flex-direction: column; align-items: center; gap: 9px;
   text-decoration: none; color: #fff; cursor: pointer; user-select: none;
@@ -102,7 +102,9 @@ main {
 .tile.add .ic { background: rgba(255, 255, 255, .22); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
 .tile.add .ic svg { width: 40%; height: 40%; stroke: #fff; }
 .tile.dragging { opacity: .35; }
-.tile.drop-before .ic { box-shadow: -6px 0 0 -2px #fff, 0 4px 14px rgba(0, 0, 0, .25); }
+.tile.drop-before .ic { box-shadow: -10px 0 0 -6px #fff, 0 4px 14px rgba(0, 0, 0, .25); }
+.tile.drop-after .ic { box-shadow: 10px 0 0 -6px #fff, 0 4px 14px rgba(0, 0, 0, .25); }
+.tile.drop-into .ic { transform: scale(1.12); box-shadow: 0 0 0 3px rgba(255, 255, 255, .9), 0 8px 22px rgba(0, 0, 0, .35); }
 
 
 .iconbtn { background: none; border: 0; cursor: pointer; padding: 6px; color: #fff; }
@@ -200,7 +202,7 @@ dialog button:disabled { opacity: .5; cursor: default; }
   header { flex-direction: column-reverse; align-items: stretch; padding: 12px 16px; }
   .right { justify-content: space-between; }
   #grid { gap: 22px 12px; }
-  #grid > .tile { width: calc(var(--tile) + 24px); }
+  #grid > .tile, #folderGrid > .tile { width: calc(var(--tile) + 24px); }
   .bgrow { flex-direction: column; }
 }
 
@@ -225,3 +227,34 @@ dialog textarea:focus { border-color: var(--accent); }
 #iconResults button:hover { border-color: var(--accent); background: #fff; }
 #iconResults img { width: 70%; height: 70%; object-fit: contain; }
 #iconSearch .hint a { color: inherit; }
+
+/* ---------- folders ---------- */
+.tile .ic.folder {
+  background: rgba(255, 255, 255, .28); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr));
+  gap: calc(var(--tile) * .05); padding: calc(var(--tile) * .13); place-items: stretch;
+}
+.mini { background: #fff; border-radius: 22%; display: grid; place-items: center; overflow: hidden; min-width: 0; min-height: 0; }
+.mini img { width: 76%; height: 76%; object-fit: contain; }
+.mini.letter { color: #fff; font-weight: 700; font-size: calc(var(--tile) * .11); }
+
+#folderView {
+  position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 20px;
+  background: rgba(0, 0, 0, .25); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  animation: fvIn .15s ease-out; transition: opacity .15s;
+}
+#folderView[hidden] { display: none; }
+#folderView.peek { opacity: 0; pointer-events: none; }
+@keyframes fvIn { from { opacity: 0; } }
+.fv-panel {
+  width: min(640px, 100%); max-height: calc(100vh - 60px); overflow-y: auto;
+  background: rgba(255, 255, 255, .16); border: 1px solid rgba(255, 255, 255, .22); border-radius: 28px;
+  padding: 22px 22px 30px; display: flex; flex-direction: column; align-items: center; gap: 22px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .3);
+}
+#folderName {
+  background: transparent; border: 0; border-bottom: 2px solid transparent; color: #fff; text-align: center;
+  font-size: 26px; font-weight: 600; width: min(420px, 100%); outline: none; padding: 4px; text-shadow: 0 1px 4px rgba(0, 0, 0, .4);
+}
+#folderName:hover, #folderName:focus { border-bottom-color: rgba(255, 255, 255, .5); }
+#folderGrid { width: 100%; }

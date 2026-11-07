@@ -125,17 +125,169 @@ function renderPages() {
     '<button class="tab add" title="Add page" id="addPage">+</button>';
 }
 
-function renderGrid() {
-  const p = page();
+const isFolder = (t) => t && t.type === 'folder';
+let openFolderId = null; // folder shown in the overlay
+const newId = () => 'f' + Math.random().toString(16).slice(2, 12).padEnd(10, '0');
+
+function linkHtml(t) {
   const target = state.settings.newTab ? ' target="_blank" rel="noopener"' : '';
-  $('#grid').innerHTML = p.tiles.map((t) => `
+  return `
     <a class="tile" href="${esc(t.url)}"${target} data-id="${esc(t.id)}" draggable="true" title="${esc(t.url)}">
       ${iconHtml(t.icon, t.name)}
       <span class="nm">${esc(t.name)}</span>
       <button class="more" type="button" title="Edit" aria-label="Edit ${esc(t.name)}">${I.dots}</button>
-    </a>`).join('') + `
-    <a class="tile add" href="#" id="addTile" draggable="false"><div class="ic">${I.plus}</div><span class="nm">Add</span></a>`;
+    </a>`;
 }
+function miniHtml(t) {
+  if (!t.icon || t.icon.startsWith('letter:')) {
+    const l = t.icon ? t.icon.slice(7) : (String(t.name).trim()[0] || '?').toUpperCase();
+    return `<span class="mini letter" style="background:${colorFor(t.name || l)}">${esc(l)}</span>`;
+  }
+  return `<span class="mini"><img src="${esc(t.icon)}" alt="" loading="lazy" draggable="false"></span>`;
+}
+function folderHtml(f) {
+  const bg = f.color ? ` style="background:${esc(f.color)}cc"` : '';
+  return `
+    <a class="tile folder" href="#" data-id="${esc(f.id)}" data-folder="1" draggable="true" title="${esc(f.name)} (${f.tiles.length})">
+      <div class="ic folder"${bg}>${f.tiles.slice(0, 9).map(miniHtml).join('')}</div>
+      <span class="nm">${esc(f.name)}</span>
+      <button class="more" type="button" title="Folder options" aria-label="Options for ${esc(f.name)}">${I.dots}</button>
+    </a>`;
+}
+const addHtml = (id) => `<a class="tile add" href="#" id="${id}" draggable="false" title="Add shortcut (right-click for New folder)"><div class="ic">${I.plus}</div><span class="nm">Add</span></a>`;
+
+function renderGrid() {
+  $('#grid').innerHTML = page().tiles.map((t) => (isFolder(t) ? folderHtml(t) : linkHtml(t))).join('') + addHtml('addTile');
+  renderFolder();
+}
+
+// ---------- folders ----------
+const folderById = (id) => page().tiles.find((t) => isFolder(t) && t.id === id);
+// Where an item lives on the current page: { list, index, folder }.
+function locate(id) {
+  const tiles = page().tiles;
+  for (let i = 0; i < tiles.length; i++) {
+    if (tiles[i].id === id) return { list: tiles, index: i, folder: null, item: tiles[i] };
+    if (isFolder(tiles[i])) {
+      const j = tiles[i].tiles.findIndex((x) => x.id === id);
+      if (j >= 0) return { list: tiles[i].tiles, index: j, folder: tiles[i], item: tiles[i].tiles[j] };
+    }
+  }
+  return null;
+}
+const itemById = (id) => locate(id)?.item;
+
+function renderFolder() {
+  const view = $('#folderView');
+  const f = openFolderId && folderById(openFolderId);
+  if (!f) { view.hidden = true; openFolderId = null; return; }
+  view.hidden = false;
+  const name = $('#folderName');
+  if (document.activeElement !== name) name.value = f.name;
+  $('#folderGrid').innerHTML = f.tiles.map(linkHtml).join('') + addHtml('addInFolder');
+}
+function openFolder(id, rename = false) {
+  openFolderId = id;
+  $('#folderView').classList.remove('peek');
+  renderFolder();
+  if (rename) { const n = $('#folderName'); n.focus(); n.select(); }
+}
+function closeFolder() {
+  openFolderId = null;
+  $('#folderView').classList.remove('peek');
+  $('#folderView').hidden = true;
+}
+
+let layoutTimer;
+function saveLayout(now = false) {
+  const p = page();
+  const body = { tiles: p.tiles.map((t) => (isFolder(t) ? { type: 'folder', id: t.id, name: t.name, color: t.color || '', tiles: t.tiles.map((x) => x.id) } : { id: t.id })) };
+  clearTimeout(layoutTimer);
+  const send = () => api('PUT', `/api/pages/${p.id}/layout`, body).catch((err) => toast(err.message));
+  if (now) return send();
+  layoutTimer = setTimeout(send, 250);
+}
+
+// Moves a shortcut (or a folder) to a new spot. where: 'before' | 'after' | 'end' | 'into'.
+function moveItem(id, { folderId = null, refId = null, where = 'end' }) {
+  const from = locate(id);
+  if (!from || id === refId) return;
+  const item = from.item;
+  if (isFolder(item) && folderId) return; // no folders inside folders
+  from.list.splice(from.index, 1);
+  const leftFolder = from.folder && from.folder.id !== folderId ? from.folder : null;
+  const tiles = page().tiles;
+  if (where === 'into') {
+    const ref = tiles.find((t) => t.id === refId);
+    if (isFolder(ref)) ref.tiles.push(item);
+    else if (ref) {
+      // Shortcut dropped on a shortcut: make a folder from the two, like on the iPhone.
+      const f = { type: 'folder', id: newId(), name: 'Folder', color: '', tiles: [ref, item] };
+      tiles.splice(tiles.indexOf(ref), 1, f);
+      if (leftFolder && !leftFolder.tiles.length) tiles.splice(tiles.indexOf(leftFolder), 1);
+      render(); saveLayout(true);
+      openFolder(f.id, true);
+      return;
+    }
+  } else {
+    const list = folderId ? folderById(folderId)?.tiles || tiles : tiles;
+    let i = refId ? list.findIndex((t) => t.id === refId) : -1;
+    if (i < 0) i = list.length; else if (where === 'after') i++;
+    list.splice(i, 0, item);
+  }
+  // A folder emptied by dragging its last shortcut out goes away.
+  if (leftFolder && !leftFolder.tiles.length) tiles.splice(tiles.indexOf(leftFolder), 1);
+  renderGrid();
+  saveLayout();
+}
+
+async function newFolderWith(id) {
+  const name = prompt('Folder name', 'Folder');
+  if (name === null) return;
+  const from = locate(id);
+  const tiles = page().tiles;
+  const f = { type: 'folder', id: newId(), name: name.trim() || 'Folder', color: '', tiles: [] };
+  if (from) {
+    from.list.splice(from.index, 1);
+    tiles.splice(from.folder ? tiles.indexOf(from.folder) + 1 : from.index, 0, f);
+    f.tiles.push(from.item);
+    if (from.folder && !from.folder.tiles.length) tiles.splice(tiles.indexOf(from.folder), 1);
+  } else tiles.push(f);
+  renderGrid();
+  await saveLayout(true);
+  toast(`Folder "${f.name}" created`);
+}
+
+function renameFolder(f) {
+  const name = prompt('Rename folder', f.name);
+  if (!name?.trim()) return;
+  f.name = name.trim(); renderGrid(); saveLayout();
+}
+function ungroupFolder(f) {
+  const tiles = page().tiles;
+  tiles.splice(tiles.indexOf(f), 1, ...f.tiles);
+  if (openFolderId === f.id) closeFolder();
+  renderGrid(); saveLayout();
+}
+async function deleteFolder(f) {
+  if (!confirm(`Delete folder "${f.name}" and its ${f.tiles.length} shortcut(s)?`)) return;
+  const tiles = page().tiles;
+  tiles.splice(tiles.indexOf(f), 1);
+  if (openFolderId === f.id) closeFolder();
+  renderGrid();
+  for (const t of f.tiles) await api('DELETE', `/api/pages/${pageId}/tiles/${t.id}`);
+  saveLayout();
+}
+async function moveFolderToPage(f, toPage) {
+  await api('POST', `/api/pages/${pageId}/folders/${f.id}/move`, { pageId: toPage });
+  const tiles = page().tiles;
+  tiles.splice(tiles.indexOf(f), 1);
+  state.pages.find((p) => p.id === toPage).tiles.push(f);
+  if (openFolderId === f.id) closeFolder();
+  renderGrid();
+  toast(`Moved to ${state.pages.find((p) => p.id === toPage).name}`);
+}
+const FOLDER_COLORS = [['Glass', ''], ['Blue', '#3b82f6'], ['Green', '#22c55e'], ['Purple', '#a855f7'], ['Pink', '#ec4899'], ['Orange', '#f97316'], ['Gray', '#64748b']];
 
 function render() {
   if (!state.pages.some((p) => p.id === pageId)) pageId = state.pages[0].id;
@@ -147,6 +299,7 @@ function render() {
 function switchPage(id) {
   if (!state.pages.some((p) => p.id === id)) return;
   pageId = id;
+  closeFolder();
   try { localStorage.setItem('sd.page', id); } catch { /* private mode */ }
   history.replaceState(null, '', `#${id}`);
   render();
@@ -215,14 +368,41 @@ function openMenu(x, y, items) {
 const closeMenu = () => { $('#menu').hidden = true; };
 
 function tileMenu(tile, x, y) {
-  const others = state.pages.filter((p) => p.id !== pageId);
+  const loc = locate(tile.id);
+  const otherPages = state.pages.filter((p) => p.id !== pageId);
+  const folders = page().tiles.filter((t) => isFolder(t) && t.id !== loc?.folder?.id);
   openMenu(x, y, [
     { text: 'Edit', run: () => openTileDialog(tile) },
     { text: 'Open in new tab', run: () => window.open(tile.url, '_blank', 'noopener') },
-    ...(others.length ? ['-', { label: 'Move to' }, ...others.map((p) => ({ text: p.name, run: () => moveTile(tile, p.id) }))] : []),
+    '-',
+    { label: 'Move to folder' },
+    ...folders.map((f) => ({ text: `📁 ${f.name}`, run: () => moveItem(tile.id, { folderId: f.id }) })),
+    { text: 'New folder…', run: () => newFolderWith(tile.id) },
+    ...(loc?.folder ? [{ text: 'Move out of folder', run: () => moveItem(tile.id, { refId: loc.folder.id, where: 'after' }) }] : []),
+    ...(otherPages.length ? ['-', { label: 'Move to page' }, ...otherPages.map((p) => ({ text: p.name, run: () => moveTile(tile, p.id) }))] : []),
     '-',
     { text: 'Delete', danger: true, run: () => deleteTile(tile) },
   ]);
+}
+
+function folderMenu(f, x, y) {
+  const otherPages = state.pages.filter((p) => p.id !== pageId);
+  openMenu(x, y, [
+    { text: 'Open', run: () => openFolder(f.id) },
+    { text: 'Rename', run: () => renameFolder(f) },
+    { label: 'Color' },
+    ...FOLDER_COLORS.map(([n, c]) => ({ text: `${(f.color || '') === c ? '● ' : ''}${n}`, run: () => { f.color = c; renderGrid(); saveLayout(); } })),
+    ...(otherPages.length ? ['-', { label: 'Move to page' }, ...otherPages.map((p) => ({ text: p.name, run: () => moveFolderToPage(f, p.id) }))] : []),
+    '-',
+    { text: 'Remove folder (keep shortcuts)', run: () => ungroupFolder(f) },
+    { text: 'Delete folder and shortcuts', danger: true, run: () => deleteFolder(f) },
+  ]);
+}
+
+function itemMenu(id, x, y) {
+  const item = itemById(id);
+  if (!item) return;
+  if (isFolder(item)) folderMenu(item, x, y); else tileMenu(item, x, y);
 }
 
 function pageMenu(p, x, y) {
@@ -239,66 +419,103 @@ function pageMenu(p, x, y) {
 async function deleteTile(tile) {
   if (!confirm(`Delete "${tile.name}"?`)) return;
   await api('DELETE', `/api/pages/${pageId}/tiles/${tile.id}`);
-  page().tiles = page().tiles.filter((t) => t.id !== tile.id);
+  const loc = locate(tile.id);
+  if (loc) loc.list.splice(loc.index, 1);
   renderGrid();
 }
 
 async function moveTile(tile, toPage) {
-  await api('PUT', `/api/pages/${pageId}/tiles/${tile.id}`, { pageId: toPage });
-  page().tiles = page().tiles.filter((t) => t.id !== tile.id);
+  await api('PUT', `/api/pages/${pageId}/tiles/${tile.id}`, { pageId: toPage, folderId: '' });
+  const loc = locate(tile.id);
+  if (loc) loc.list.splice(loc.index, 1);
   state.pages.find((p) => p.id === toPage).tiles.push(tile);
   renderGrid();
   toast(`Moved to ${state.pages.find((p) => p.id === toPage).name}`);
 }
 
-// Drag and drop: tiles reorder within the grid, or drop on a page tab to move.
-let dragId = null;
+// Drag and drop. On the page: drop on the middle of a shortcut to make a folder, on a folder to put
+// it inside, near the edges to reorder. Inside a folder: reorder, or drag outside the box to take it out.
+// Drop on a page tab to move it to that page.
+let drag = null; // { id, isFolder, fromFolder }
+let dropAt = null;
+function clearDropMarks() {
+  document.querySelectorAll('.drop-before,.drop-after,.drop-into,.drag-over').forEach((el) => el.classList.remove('drop-before', 'drop-after', 'drop-into', 'drag-over'));
+}
+function dropTarget(e, container) {
+  const inFolder = container.id === 'folderGrid';
+  const over = e.target.closest('.tile');
+  if (!over || over.classList.contains('add')) return { folderId: inFolder ? openFolderId : null, where: 'end' };
+  if (over.dataset.id === drag.id) return null;
+  const r = over.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width;
+  const canInto = !inFolder && !drag.isFolder;
+  if (canInto && x > 0.22 && x < 0.78) return { refId: over.dataset.id, where: 'into', el: over };
+  return { folderId: inFolder ? openFolderId : null, refId: over.dataset.id, where: x < 0.5 ? 'before' : 'after', el: over };
+}
+function endDrag() {
+  drag = null; dropAt = null;
+  clearDropMarks();
+  document.querySelectorAll('.dragging').forEach((el) => el.classList.remove('dragging'));
+  if ($('#folderView').classList.contains('peek')) closeFolder();
+}
 function setupDrag() {
-  const grid = $('#grid');
-  grid.addEventListener('dragstart', (e) => {
-    const t = e.target.closest('.tile:not(.add)');
-    if (!t) return;
-    dragId = t.dataset.id; t.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', dragId);
-  });
-  grid.addEventListener('dragend', () => {
-    dragId = null;
-    document.querySelectorAll('.dragging,.drop-before,.drag-over').forEach((el) => el.classList.remove('dragging', 'drop-before', 'drag-over'));
-  });
-  grid.addEventListener('dragover', (e) => {
-    if (!dragId) return;
+  for (const container of [$('#grid'), $('#folderGrid')]) {
+    container.addEventListener('dragstart', (e) => {
+      const t = e.target.closest('.tile:not(.add)');
+      if (!t) return;
+      drag = { id: t.dataset.id, isFolder: !!t.dataset.folder, fromFolder: container.id === 'folderGrid' };
+      t.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', drag.id);
+    });
+    container.addEventListener('dragover', (e) => {
+      if (!drag) return;
+      e.preventDefault(); e.stopPropagation();
+      clearDropMarks();
+      dropAt = dropTarget(e, container);
+      if (dropAt?.el) dropAt.el.classList.add(`drop-${dropAt.where}`);
+    });
+    container.addEventListener('drop', (e) => {
+      if (!drag) return;
+      e.preventDefault(); e.stopPropagation();
+      const target = dropTarget(e, container);
+      const id = drag.id;
+      endDrag();
+      if (target) moveItem(id, target);
+    });
+  }
+  // Drops re-render the grid, so the dragged element is often gone before "dragend": clean up here too.
+  document.addEventListener('dragend', endDrag);
+  // Dragging a shortcut out of an open folder: the folder fades away so you can drop it on the page.
+  $('#folderView').addEventListener('dragover', (e) => {
+    if (!drag || e.target.closest('.fv-panel')) return;
     e.preventDefault();
-    const over = e.target.closest('.tile');
-    grid.querySelectorAll('.drop-before').forEach((el) => el.classList.remove('drop-before'));
-    if (over && over.dataset.id !== dragId) over.classList.add('drop-before');
+    $('#folderView').classList.add('peek');
   });
-  grid.addEventListener('drop', async (e) => {
-    if (!dragId) return;
+  // Dropping on empty page space puts it at the end of the page.
+  document.body.addEventListener('dragover', (e) => { if (drag && !e.target.closest('#grid,#pages,.fv-panel')) e.preventDefault(); });
+  document.body.addEventListener('drop', (e) => {
+    if (!drag || e.target.closest('#grid,#pages,.fv-panel')) return;
     e.preventDefault();
-    const over = e.target.closest('.tile');
-    const tiles = page().tiles;
-    const from = tiles.findIndex((t) => t.id === dragId);
-    const [moved] = tiles.splice(from, 1);
-    let to = over && !over.classList.contains('add') ? tiles.findIndex((t) => t.id === over.dataset.id) : tiles.length;
-    if (to < 0) to = tiles.length;
-    tiles.splice(to, 0, moved);
-    renderGrid();
-    await api('PUT', `/api/pages/${pageId}/order`, { ids: tiles.map((t) => t.id) });
+    const { id, fromFolder } = drag;
+    endDrag();
+    if (fromFolder) moveItem(id, { where: 'end' });
   });
   const nav = $('#pages');
   nav.addEventListener('dragover', (e) => {
     const tab = e.target.closest('.tab[data-id]');
-    if (!dragId || !tab || tab.dataset.id === pageId) return;
+    if (!drag || !tab || tab.dataset.id === pageId) return;
     e.preventDefault(); tab.classList.add('drag-over');
   });
   nav.addEventListener('dragleave', (e) => e.target.closest('.tab')?.classList.remove('drag-over'));
   nav.addEventListener('drop', async (e) => {
     const tab = e.target.closest('.tab[data-id]');
-    if (!dragId || !tab) return;
+    if (!drag || !tab || tab.dataset.id === pageId) return;
     e.preventDefault();
-    const tile = page().tiles.find((t) => t.id === dragId);
-    if (tile) await moveTile(tile, tab.dataset.id);
+    const item = itemById(drag.id);
+    endDrag();
+    if (isFolder(item)) await moveFolderToPage(item, tab.dataset.id);
+    else if (item) await moveTile(item, tab.dataset.id);
   });
 }
 
@@ -362,10 +579,13 @@ function openTileDialog(tile = null) {
   $('#tileDelete').hidden = !tile;
   form.url.value = tile?.url || '';
   form.name.value = tile?.name || '';
+  // "Page" doubles as "Folder": Personal, Personal › Proxmox, Office...
   const sel = form.pageId;
-  sel.innerHTML = state.pages.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
-  sel.value = pageId;
-  $('#moveRow').hidden = state.pages.length < 2;
+  sel.innerHTML = state.pages.map((p) => `<option value="${esc(p.id)}|">${esc(p.name)}</option>` +
+    p.tiles.filter(isFolder).map((f) => `<option value="${esc(p.id)}|${esc(f.id)}">${esc(p.name)} › ${esc(f.name)}</option>`).join('')).join('');
+  const inFolder = tile ? locate(tile.id)?.folder?.id : openFolderId;
+  sel.value = `${pageId}|${inFolder || ''}`;
+  $('#moveRow').hidden = sel.options.length < 2;
   $('#iconHint').textContent = tile ? '' : 'paste a web address to find icons';
   $('#iconSearch').hidden = true; $('#iconQuery').value = ''; $('#iconResults').innerHTML = ''; iconHits = [];
   setIconOptions(tile ? [tile.icon] : [], tile ? tile.icon || letterIcon(tile.name) : '');
@@ -470,7 +690,8 @@ $('#tileCancel').onclick = () => dlg.close();
 $('#tileDelete').onclick = async () => { const t = editing; dlg.close(); await deleteTile(t); };
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const body = { url: form.url.value.trim(), name: form.name.value.trim(), icon: chosenIcon, pageId: form.pageId.value };
+  const [destPage, destFolder] = form.pageId.value.split('|');
+  const body = { url: form.url.value.trim(), name: form.name.value.trim(), icon: chosenIcon, pageId: destPage || pageId, folderId: destFolder || '' };
   const btn = $('#tileSave'); btn.disabled = true;
   try {
     if (editing) {
@@ -479,7 +700,7 @@ form.addEventListener('submit', async (e) => {
       await api('POST', `/api/pages/${body.pageId || pageId}/tiles`, body);
     }
     state = await api('GET', '/api/state');
-    if (body.pageId && body.pageId !== pageId) toast(`Saved to ${state.pages.find((p) => p.id === body.pageId)?.name}`);
+    if (body.pageId !== pageId) toast(`Saved to ${state.pages.find((p) => p.id === body.pageId)?.name}`);
     dlg.close();
     render();
   } catch (err) { toast(err.message); } finally { btn.disabled = false; }
@@ -501,7 +722,8 @@ async function renamePage(p) {
 }
 async function deletePage(p) {
   if (state.pages.length < 2) return toast('Keep at least one page');
-  if (!confirm(`Delete page "${p.name}" and its ${p.tiles.length} shortcut(s)?`)) return;
+  const n = p.tiles.reduce((a, t) => a + (isFolder(t) ? t.tiles.length : 1), 0);
+  if (!confirm(`Delete page "${p.name}" and its ${n} shortcut(s)?`)) return;
   await api('DELETE', `/api/pages/${p.id}`);
   state.pages = state.pages.filter((x) => x.id !== p.id);
   render();
@@ -632,29 +854,48 @@ $('#pages').addEventListener('contextmenu', (e) => {
   e.preventDefault(); pageMenu(state.pages.find((p) => p.id === t.dataset.id), e.clientX, e.clientY);
 });
 
-$('#grid').addEventListener('click', (e) => {
-  if (e.target.closest('#addTile')) { e.preventDefault(); openTileDialog(); return; }
-  const more = e.target.closest('.more');
-  if (more) {
-    e.preventDefault(); e.stopPropagation();
-    const tile = page().tiles.find((t) => t.id === more.closest('.tile').dataset.id);
-    const r = more.getBoundingClientRect();
-    tileMenu(tile, r.left, r.bottom + 4);
-  }
+// Shortcut and folder events for both the page grid and the open folder.
+for (const container of [$('#grid'), $('#folderGrid')]) {
+  container.addEventListener('click', (e) => {
+    if (e.target.closest('#addTile, #addInFolder')) { e.preventDefault(); openTileDialog(); return; }
+    const more = e.target.closest('.more');
+    if (more) {
+      e.preventDefault(); e.stopPropagation();
+      const r = more.getBoundingClientRect();
+      itemMenu(more.closest('.tile').dataset.id, r.left, r.bottom + 4);
+      return;
+    }
+    const folder = e.target.closest('.tile[data-folder]');
+    if (folder) { e.preventDefault(); openFolder(folder.dataset.id); }
+  });
+  container.addEventListener('contextmenu', (e) => {
+    const el = e.target.closest('.tile');
+    if (!el) return;
+    e.preventDefault();
+    if (el.classList.contains('add')) {
+      openMenu(e.clientX, e.clientY, [
+        { text: 'Add shortcut', run: () => openTileDialog() },
+        ...(container.id === 'grid' ? [{ text: 'New folder…', run: () => newFolderWith(null) }] : []),
+      ]);
+    } else itemMenu(el.dataset.id, e.clientX, e.clientY);
+  });
+  // Long press on touch screens opens the same menu.
+  let pressTimer;
+  container.addEventListener('touchstart', (e) => {
+    const el = e.target.closest('.tile:not(.add)'); if (!el) return;
+    const { clientX: x, clientY: y } = e.touches[0];
+    pressTimer = setTimeout(() => itemMenu(el.dataset.id, x, y), 550);
+  }, { passive: true });
+  ['touchend', 'touchmove'].forEach((ev) => container.addEventListener(ev, () => clearTimeout(pressTimer), { passive: true }));
+}
+$('#folderView').addEventListener('click', (e) => { if (!e.target.closest('.fv-panel')) closeFolder(); });
+$('#folderName').addEventListener('input', (e) => {
+  const f = folderById(openFolderId); if (!f) return;
+  f.name = e.target.value.trim() || 'Folder';
+  $('#grid').innerHTML = page().tiles.map((t) => (isFolder(t) ? folderHtml(t) : linkHtml(t))).join('') + addHtml('addTile');
+  saveLayout();
 });
-$('#grid').addEventListener('contextmenu', (e) => {
-  const el = e.target.closest('.tile:not(.add)'); if (!el) return;
-  e.preventDefault();
-  tileMenu(page().tiles.find((t) => t.id === el.dataset.id), e.clientX, e.clientY);
-});
-// Long press on touch screens opens the same menu.
-let pressTimer;
-$('#grid').addEventListener('touchstart', (e) => {
-  const el = e.target.closest('.tile:not(.add)'); if (!el) return;
-  const { clientX: x, clientY: y } = e.touches[0];
-  pressTimer = setTimeout(() => tileMenu(page().tiles.find((t) => t.id === el.dataset.id), x, y), 550);
-}, { passive: true });
-['touchend', 'touchmove'].forEach((ev) => $('#grid').addEventListener(ev, () => clearTimeout(pressTimer), { passive: true }));
+$('#folderName').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
 
 $('#weather').onclick = (e) => { e.stopPropagation(); showForecast(); };
 $('#settingsBtn').onclick = openSettings;
@@ -670,7 +911,9 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('#forecast')) $('#forecast').hidden = true;
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeMenu(); $('#forecast').hidden = true; }
+  if (e.key === 'Escape') {
+    if (!$('#menu').hidden || !$('#forecast').hidden) { closeMenu(); $('#forecast').hidden = true; } else if (openFolderId && !document.querySelector('dialog[open]')) closeFolder();
+  }
   const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName) || document.querySelector('dialog[open]');
   if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
   if (/^[1-9]$/.test(e.key) && state.pages[e.key - 1]) switchPage(state.pages[e.key - 1].id);

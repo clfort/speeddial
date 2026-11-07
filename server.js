@@ -302,31 +302,96 @@ async function localizeIcon(tile) {
   return tile;
 }
 
+// A page's tiles are shortcuts or folders; a folder holds shortcuts (one level, like iPhone folders).
+const isFolder = (t) => t && t.type === 'folder';
+const FOLDER_COLORS = /^(|#[0-9a-f]{6})$/i;
+
+// Where a shortcut lives on a page: top level or inside a folder.
+function locate(page, tid) {
+  for (let i = 0; i < page.tiles.length; i++) {
+    const t = page.tiles[i];
+    if (isFolder(t)) {
+      const j = t.tiles.findIndex((x) => x.id === tid);
+      if (j >= 0) return { list: t.tiles, index: j, folder: t };
+    } else if (t.id === tid) return { list: page.tiles, index: i, folder: null };
+  }
+  return null;
+}
+const targetList = (page, folderId) => {
+  const f = folderId ? page.tiles.find((t) => isFolder(t) && t.id === folderId) : null;
+  return f ? f.tiles : page.tiles;
+};
+
 app.post('/api/pages/:id/tiles', wrap(async (req, res) => {
   const page = findPage(req.params.id);
   if (!page) throw fail(404, 'Page not found');
   const tile = await localizeIcon(cleanTile(req.body || {}));
-  page.tiles.push(tile);
+  targetList(page, req.body?.folderId).push(tile);
   await save();
   res.json(tile);
 }));
 
 app.put('/api/pages/:id/tiles/:tid', wrap(async (req, res) => {
   const page = findPage(req.params.id);
-  const i = page ? page.tiles.findIndex((t) => t.id === req.params.tid) : -1;
-  if (i < 0) throw fail(404, 'Shortcut not found');
-  const tile = await localizeIcon(cleanTile(req.body || {}, page.tiles[i]));
-  // Move to another page if asked.
-  const target = req.body?.pageId && req.body.pageId !== page.id ? findPage(req.body.pageId) : null;
-  if (target) { page.tiles.splice(i, 1); target.tiles.push(tile); } else page.tiles[i] = tile;
+  const loc = page && locate(page, req.params.tid);
+  if (!loc) throw fail(404, 'Shortcut not found');
+  const tile = await localizeIcon(cleanTile(req.body || {}, loc.list[loc.index]));
+  // Move to another page and/or folder if asked ('' folderId = top level).
+  const target = req.body?.pageId ? findPage(req.body.pageId) || page : page;
+  const folderId = req.body?.folderId !== undefined ? String(req.body.folderId || '') : (target === page ? loc.folder?.id || '' : '');
+  const dest = targetList(target, folderId);
+  if (dest === loc.list) loc.list[loc.index] = tile;
+  else { loc.list.splice(loc.index, 1); dest.push(tile); }
   await save();
   res.json(tile);
 }));
 
 app.delete('/api/pages/:id/tiles/:tid', wrap(async (req, res) => {
   const page = findPage(req.params.id);
+  const loc = page && locate(page, req.params.tid);
+  if (loc) loc.list.splice(loc.index, 1);
+  await save();
+  res.json({ ok: true });
+}));
+
+// The client rearranges shortcuts and folders (reorder, make a folder, move in/out, rename, ungroup)
+// and sends the whole layout as ids. Shortcuts are only referenced, never created here, and any
+// shortcut the layout forgets is kept at the end so nothing can be lost by a bad request.
+app.put('/api/pages/:id/layout', wrap(async (req, res) => {
+  const page = findPage(req.params.id);
   if (!page) throw fail(404, 'Page not found');
-  page.tiles = page.tiles.filter((t) => t.id !== req.params.tid);
+  const links = new Map();
+  for (const t of page.tiles) (isFolder(t) ? t.tiles : [t]).forEach((x) => links.set(x.id, x));
+  const used = new Set();
+  const take = (id) => { const t = links.get(String(id)); if (!t || used.has(t.id)) return null; used.add(t.id); return t; };
+  const out = [];
+  for (const item of Array.isArray(req.body?.tiles) ? req.body.tiles : []) {
+    if (item && item.type === 'folder') {
+      out.push({
+        type: 'folder',
+        id: /^[a-z0-9]{6,20}$/i.test(item.id || '') ? item.id : uid(),
+        name: String(item.name || '').trim().slice(0, 40) || 'Folder',
+        color: FOLDER_COLORS.test(item.color || '') ? item.color || '' : '',
+        tiles: (Array.isArray(item.tiles) ? item.tiles : []).map(take).filter(Boolean),
+      });
+    } else {
+      const t = take(item?.id);
+      if (t) out.push(t);
+    }
+  }
+  for (const t of links.values()) if (!used.has(t.id)) out.push(t);
+  page.tiles = out;
+  await save();
+  res.json(page);
+}));
+
+// Move a whole folder to another page.
+app.post('/api/pages/:id/folders/:fid/move', wrap(async (req, res) => {
+  const page = findPage(req.params.id);
+  const target = findPage(String(req.body?.pageId || ''));
+  const i = page ? page.tiles.findIndex((t) => isFolder(t) && t.id === req.params.fid) : -1;
+  if (i < 0 || !target) throw fail(404, 'Folder not found');
+  if (target !== page) target.tiles.push(...page.tiles.splice(i, 1));
   await save();
   res.json({ ok: true });
 }));
