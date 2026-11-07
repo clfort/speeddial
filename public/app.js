@@ -83,17 +83,39 @@ function greetingText() {
   const name = (state.settings.userName || '').trim();
   return name ? `${part}, ${name}` : part;
 }
-function renderGreeting() {
-  const custom = (page()?.title || '').trim();
-  const show = !!custom || state.settings.showGreeting !== false;
-  const el = $('#greeting');
-  el.hidden = !show;
-  if (!show) return;
-  const text = custom || greetingText();
-  if ($('h1', el).textContent !== text) $('h1', el).textContent = text;
-  const date = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
-  if ($('.date', el).textContent !== date) $('.date', el).textContent = date;
+// "1. “Text” — Author" -> { text, author }
+function parseQuotes(raw) {
+  return String(raw || '').split('\n').map((l) => l.trim().replace(/^\d+[.)]\s*/, '')).filter((l) => l.length > 3).map((l) => {
+    const m = l.match(/^(.*?)\s+[—–-]{1,2}\s+([^"“”]+)$/);
+    const text = (m ? m[1] : l).trim().replace(/^["“”']+|["“”']+$/g, '').trim();
+    return { text, author: m ? m[2].trim() : '' };
+  }).filter((q) => q.text);
 }
+let quote = null;
+function nextQuote() {
+  const list = parseQuotes(state.settings.quotes);
+  if (!list.length) { quote = null; return; }
+  let q; do { q = list[Math.floor(Math.random() * list.length)]; } while (list.length > 1 && quote && q.text === quote.text);
+  quote = q;
+}
+function renderGreeting() {
+  const s = state.settings;
+  const custom = (page()?.title || '').trim();
+  const mode = custom ? 'title' : (s.titleMode || 'greeting');
+  if (mode === 'quote' && (!quote || !parseQuotes(s.quotes).some((q) => q.text === quote.text))) nextQuote();
+  const el = $('#greeting');
+  const show = mode === 'title' || mode === 'greeting' || (mode === 'quote' && quote);
+  el.hidden = !show;
+  el.classList.toggle('quote', mode === 'quote');
+  el.title = mode === 'quote' ? 'Click for another quote' : '';
+  if (!show) return;
+  const date = new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+  const text = mode === 'title' ? custom : mode === 'quote' ? `“${quote.text}”` : greetingText();
+  const sub = mode === 'quote' ? (quote.author ? `— ${quote.author}` : '') : date;
+  if ($('h1', el).textContent !== text) $('h1', el).textContent = text;
+  if ($('.date', el).textContent !== sub) $('.date', el).textContent = sub;
+}
+$('#greeting').addEventListener('click', () => { if ($('#greeting').classList.contains('quote')) { nextQuote(); renderGreeting(); } });
 setInterval(() => state.pages.length && renderGreeting(), 30000);
 
 function renderPages() {
@@ -527,7 +549,9 @@ function openSettings() {
   $('#bgThisPage').checked = !!page().background;
   $('#bgPageName').textContent = page().name;
   sform.userName.value = s.userName || '';
-  sform.showGreeting.checked = s.showGreeting !== false;
+  sform.titleMode.value = s.titleMode || 'greeting';
+  sform.quotes.value = s.quotes || '';
+  $('#quotesRow').hidden = sform.titleMode.value !== 'quote';
   $('#pageTitle').value = page().title || '';
   sform.querySelectorAll('.pgName').forEach((el) => (el.textContent = page().name));
   refreshBgPreview();
@@ -536,9 +560,10 @@ function openSettings() {
 sform.addEventListener('input', (e) => {
   const el = e.target; if (!el.name) return;
   if (el.name === 'dim' || el.name === 'tileSize') saveSettings({ [el.name]: Number(el.value) });
+  if (el.name === 'quotes') { clearTimeout(quotesTimer); state.settings.quotes = el.value; quotesTimer = setTimeout(() => { saveSettings({ quotes: el.value }); }, 600); }
   if (el.name === 'userName') { clearTimeout(nameTimer); state.settings.userName = el.value; renderGreeting(); nameTimer = setTimeout(() => saveSettings({ userName: el.value.trim() }), 500); }
 });
-let nameTimer, titleTimer;
+let nameTimer, titleTimer, quotesTimer;
 $('#pageTitle').addEventListener('input', (e) => {
   const p = page(); p.title = e.target.value; renderGreeting();
   clearTimeout(titleTimer);
@@ -549,6 +574,7 @@ sform.addEventListener('change', (e) => {
   if (el.type === 'checkbox') saveSettings({ [el.name]: el.checked });
   else if (el.name === 'units') saveSettings({ units: el.value }).then(loadWeather);
   else if (el.name === 'searchEngine') saveSettings({ searchEngine: el.value });
+  else if (el.name === 'titleMode') { $('#quotesRow').hidden = el.value !== 'quote'; saveSettings({ titleMode: el.value }); }
 });
 sform.addEventListener('submit', (e) => { e.preventDefault(); sdlg.close(); });
 $('#bgUpload').onclick = () => $('#bgFile').click();

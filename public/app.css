@@ -208,6 +208,11 @@ dialog button:disabled { opacity: .5; cursor: default; }
 #greeting { text-align: center; text-shadow: 0 2px 8px rgba(0, 0, 0, .45); margin-bottom: -14px; }
 #greeting h1 { margin: 0; font-size: clamp(28px, 4.5vw, 46px); font-weight: 600; letter-spacing: -.5px; }
 #greeting .date { margin-top: 4px; font-size: 15px; opacity: .9; }
+#greeting.quote { max-width: 900px; cursor: pointer; }
+#greeting.quote h1 { font-size: clamp(20px, 2.6vw, 30px); font-weight: 500; line-height: 1.35; letter-spacing: 0; }
+#greeting.quote .date { margin-top: 8px; font-size: 14px; }
+dialog textarea { background: rgba(255, 255, 255, .06); border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; color: var(--panel-fg); outline: none; resize: vertical; font: 13px/1.45 inherit; font-family: inherit; }
+dialog textarea:focus { border-color: var(--accent); }
 
 /* ---------- icon search ---------- */
 #iconSearch { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255, 255, 255, .03); }

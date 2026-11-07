@@ -19,6 +19,9 @@ const ICONIFY_API = (process.env.ICONIFY_API || 'https://api.iconify.design').re
 fs.mkdirSync(UPLOADS, { recursive: true });
 
 // ---------- storage ----------
+// One quote per line: "Text" — Author
+const DEFAULT_QUOTES = "\"The secret of getting ahead is getting started.\" — Mark Twain\n\"Ideas are easy. Implementation is hard.\" — Guy Kawasaki\n\"The critical ingredient is getting off your butt and doing something. It’s as simple as that.\" — Nolan Bushnell\n\"I knew that if I failed I wouldn't regret that, but I knew the one thing I might regret is not trying.\" — Jeff Bezos\n\"Risk more than others think is safe. Dream more than others think is practical.\" — Howard Schultz\n\"You don’t build a business; you build people, and then people build the business.\" — Zig Ziglar\n\"Don’t find customers for your products, find products for your customers.\" — Seth Godin\n\"Timing, perseverance, and ten years of trying will eventually make you look like an overnight success.\" — Biz Stone\n\"A person who never made a mistake never tried anything new.\" — Albert Einstein\n\"Success usually comes to those who are too busy to be looking for it.\" — Henry David Thoreau\n\"Life is really simple, but we insist on making it complicated.\" — Confucius\n\"In three words I can sum up everything I've learned about life: it goes on.\" — Robert Frost\n\"Dwell on the beauty of life. Watch the stars, and see yourself running with them.\" — Marcus Aurelius\n\"Not how long, but how well you have lived is the main thing.\" — Seneca\n\"The purpose of our lives is to be happy.\" — Dalai Lama\n\"Life is not a problem to be solved, but a reality to be experienced.\" — Søren Kierkegaard\n\"Do not go where the path may lead, go instead where there is no path and leave a trail.\" — Ralph Waldo Emerson\n\"To live is the rarest thing in the world. Most people exist, that is all.\" — Oscar Wilde\n\"The only journey is the one within.\" — Rainer Maria Rilke\n\"Tell me, what is it you plan to do with your one wild and precious life?\" — Mary Oliver\n\"Keep your face always toward the sunshine—and shadows will fall behind you.\" — Walt Whitman\n\"A warm smile is the universal language of kindness.\" — William Arthur Ward\n\"Happiness is not something ready-made. It comes from your own actions.\" — Dalai Lama\n\"Laughter is sunshine; it chases winter from the human face.\" — Victor Hugo\n\"Joy is not in things; it is in us.\" — Richard Wagner\n\"The most wasted of all days is one without laughter.\" — Nicolas Chamfort\n\"There is no way to happiness—happiness is the way.\" — Thich Nhat Hanh\n\"Enjoy the little things, for one day you may look back and realize they were the big things.\" — Robert Brault\n\"Cheerfulness is the best promoter of health and is as friendly to the mind as to the body.\" — Joseph Addison\n\"Every day may not be good... but there’s something good in every day.\" — Alice Morse Earle";
+
 const uid = () => crypto.randomBytes(6).toString('hex');
 
 function defaultState() {
@@ -39,6 +42,8 @@ function defaultState() {
       newTab: false,
       userName: '',         // shown in the greeting: "Good evening, Carlos"
       showGreeting: true,
+      titleMode: 'quote',   // 'quote' (random quote), 'greeting' or 'none'
+      quotes: DEFAULT_QUOTES,
     },
     pages: [
       { id: 'personal', name: 'Personal', background: '', tiles: [] },
@@ -239,6 +244,7 @@ app.get('/api/state', (req, res) => res.json(state));
 app.put('/api/settings', wrap(async (req, res) => {
   const allowed = Object.keys(defaultState().settings);
   for (const [k, v] of Object.entries(req.body || {})) if (allowed.includes(k)) state.settings[k] = v;
+  if (typeof state.settings.quotes === 'string') state.settings.quotes = state.settings.quotes.slice(0, 50000);
   weatherCache.key = '';
   await save();
   res.json(state.settings);

@@ -78,9 +78,16 @@
       <h3>Title</h3>
       <div class="row">
         <label class="grow">Your name<input name="userName" placeholder="Carlos"></label>
-        <label class="check"><input type="checkbox" name="showGreeting"> Show greeting</label>
+        <label>Show at the top
+          <select name="titleMode">
+            <option value="quote">A random quote</option>
+            <option value="greeting">Good morning / evening</option>
+            <option value="none">Nothing</option>
+          </select>
+        </label>
       </div>
-      <label>Title for this page (<span class="pgName"></span>)<input id="pageTitle" placeholder="Leave empty for &quot;Good evening, …&quot;"></label>
+      <label id="quotesRow">Quotes, one per line: "Text" — Author<textarea name="quotes" rows="6" spellcheck="false"></textarea></label>
+      <label>Title for this page (<span class="pgName"></span>)<input id="pageTitle" placeholder="Leave empty to use the setting above"></label>
 
       <h3>Background</h3>
       <div class="bgrow">

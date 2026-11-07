@@ -9,8 +9,9 @@ your own background, the local time and the weather. Nothing else.
 - **Free icon search:** in the add/edit dialog click *Search free icons* and
   type a word (e.g. "shipping"). Results come from [Iconify](https://iconify.design/)
   (200k+ open-source icons, no account); one-color icons can be tinted.
-- **Greeting:** "Good evening, Carlos" above the search bar. Set your name in
-  settings, or give a page its own title (e.g. "Work") instead.
+- **Top line:** a random quote (click it for another), or "Good evening, Carlos",
+  or nothing. Edit the quote list and your name in settings, or give a page its
+  own title (e.g. "Work") instead.
 - **Edit / delete / move:** hover a shortcut and click **⋯**, or right-click it
   (long-press on a phone). Drag icons to reorder them, or drop one on a page tab
   to move it there.
