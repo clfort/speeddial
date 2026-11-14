@@ -57,8 +57,14 @@ try {
   state = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
   state.settings = { ...defaultState().settings, ...state.settings };
   if (!Array.isArray(state.pages) || !state.pages.length) state.pages = defaultState().pages;
-} catch {
+} catch (e) {
   state = defaultState();
+  if (fs.existsSync(DB_FILE)) {
+    // Keep the unreadable file instead of letting the next save overwrite it.
+    const kept = `${DB_FILE}.corrupt-${Date.now()}`;
+    fs.copyFileSync(DB_FILE, kept);
+    console.error(`Could not read ${DB_FILE} (${e.message}); starting empty, original kept as ${kept}`);
+  }
 }
 
 let saving = Promise.resolve();
@@ -537,3 +543,6 @@ app.post('/api/import', wrap(async (req, res) => {
 }));
 
 app.listen(PORT, () => console.log(`SpeedDial on http://0.0.0.0:${PORT} (data: ${DATA_DIR})`));
+// Say why the process stops, so `docker compose logs` shows more than the startup line.
+for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { console.log(`Stopping (${sig})`); process.exit(0); });
+

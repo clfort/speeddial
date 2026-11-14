@@ -37,7 +37,7 @@ Proxmox, AdGuard, Jellyfin…), the site's own icons, and a favicon service, the
 saved locally so the page keeps working offline. Self-signed HTTPS (Proxmox,
 routers, NAS) is fine.
 
-Everything is stored in `./data` (`speeddial.json` plus `uploads/`).
+Everything is stored in `./data` (`speeddial.json` plus `uploads/`). If `speeddial.json` ever becomes unreadable, SpeedDial starts empty but keeps the bad file as `speeddial.json.corrupt-<time>` and says so in the logs; restore from that copy or a backup.
 
 ## Install from the prebuilt image
 
